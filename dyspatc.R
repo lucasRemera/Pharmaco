@@ -14,7 +14,7 @@ data=read.csv2("DYSP_ATC1.csv")
 #vecteur des 3 premiers caractères du code dysplasie
 DYSPLASIE=unique(unlist(strsplit(as.character(data$DYSPLASIES),split = "[|]")))
 DYSPLASIE3=unique(substr(DYSPLASIE,1,3))
-DYSPLASIE3=DYSPLASIE3[-which(DYSPLASIE3=="")]
+#DYSPLASIE3=DYSPLASIE3[-which(DYSPLASIE3=="")]
 
 #vecteur des 5 premiers caractères du code ATC
 ATC=unique(unlist(strsplit(as.character(data$ATC),split = "[|]")))
@@ -75,52 +75,221 @@ melt.dyspatc[Benjamini(melt.dyspatc$value)$validate,] #selection apres correctio
 melt.dyspatc[which(melt.dyspatc$value<Benjamini(melt.dyspatc$value[-which(melt.dyspatc$value==1)])$alphaCorrige),]
 
 ##alternative pour etre moins stringent
-todel=which(apply(count.dyspatc,1,sum)<=2)
-count.sym=sapply(c(DYSPLASIE3,"NONE",ATC5), function(dysp){ #le tableau de contingence
-  sapply(c(DYSPLASIE3,"NONE",ATC5), function(atc) sum(grepl(dysp,data$DYSPLASIES)&grepl(atc,data$ATC)) )
-})
+# todel=which(apply(count.dyspatc,1,sum)<=2)
+# count.sym=sapply(c(DYSPLASIE3,"NONE",ATC5), function(dysp){ #le tableau de contingence
+#   sapply(c(DYSPLASIE3,"NONE",ATC5), function(atc) sum(grepl(dysp,data$DYSPLASIES)&grepl(atc,data$ATC)) )
+# })
 
-library(igraph)
-graphe=graph_from_adjacency_matrix(count.sym,weighted = T,mode = "undirected")
-plot.igraph(graphe,width=E(graphe)$weight,label.cex=0.01,xlim=c(-0.01,0.01))
+#count.dyspatc=count.dyspatc[-1,]
+# natc=nrow(count.dyspatc)
+# ndysp=ncol(count.dyspatc)
+# count.sym2=matrix(0,ncol=sum(dim(count.dyspatc)),nrow=sum(dim(count.dyspatc)))
+# 
+# count.sym2[(ndysp+1):(ndysp+natc),1:ndysp]=count.dyspatc
+# nom=c(colnames(count.dyspatc),rownames(count.dyspatc))
+# colnames(count.sym2)=nom
+# rownames(count.sym2)=nom
+# 
+# #count.sym2=count.sym2+t(count.sym2)
+# (spdysp=spectralPartitionnement(count.sym2,norme = F,k=2))
+# nom[which(spdysp==1)]
+# 
+# library(igraph)
+# graphe=graph_from_adjacency_matrix(count.sym,weighted = T,mode = "undirected")
+# plot.igraph(graphe,width=E(graphe)$weight,label.cex=0.01,xlim=c(-0.01,0.01))
+# 
+# plot.igraph(graphe)
+# 
+# compcon=decompose(graphe)
+# mincut=min_cut(graphe,value.only = F)
+# 
+# 
+# freq.atc=count.dyspatc/apply(count.dyspatc, 1, sum)
+# freq.dysp= t(t(count.dyspatc)/apply(count.dyspatc, 2, sum))
+# plot(hclust(dist(freq.atc)))
+# plot(hclust(dist(t(freq.dysp))))
+# order.atc=hclust(dist(freq.atc))$order
+# order.dysp=hclust(dist(t(freq.dysp)))$order
+# freq.order.atc=freq.atc[order.atc,order.dysp]
+# freq.pv=fisher.dyspatc[order.atc,order.dysp]
+# melt.freq.order=melt(freq.order.atc)
+# ggplot()+geom_raster(data=melt.freq.order,aes(x=Var2,y=Var1,fill=value))
+# 
+# 
+# heatmap(freq.dyspatc)
+# 
+# plot.phylo(as.phylo(hclust(dist(atc))),type="fan")
+# 
+# 
+# 
+# df.atc.dysp=rbind(atc,dysp) #concatenation des atc et dysp
+# 
+# library(cluster)
+# gap=clusGap(df.atc.dysp,kmeans,30,B=500)
+# nc=maxSE(gap$Tab[,3],gap$Tab[,4],method = "Tibs2001SEmax") #le nombre de clusters
+# print(nc)
+# kmeans(df.atc.dysp,nc)
+# 
+# #clustering hierarchique
+# hc=hclust(dist(df.atc.dysp))
+# library(ape)
+# ape.hc=as.phylo(hc)
+# plot(hc)
+# plot(ape.hc,cex=.8,use.edge.length = T,type="fan")
 
-plot.igraph(graphe,)
+## ACM ##
+ATC_=ATC5[-which(nchar(ATC5)<5)] 
+TABLE_DYSP=sapply(DYSPLASIE3, function(dysp) as.factor(grepl(dysp,data$DYSPLASIES)))
+TABLE_ATC=sapply(c("NONE",ATC_), function(atc) as.factor(grepl(atc,data$ATC)))
 
-compcon=decompose(graphe)
-mincut=min_cut(graphe,value.only = F)
+burt=as.data.frame(cbind(TABLE_DYSP,TABLE_ATC))
+#df.burt=as.data.frame(apply(burt,2,as.factor))
+#subburt=burt[1:5000,]
+#torem=which(apply(subburt,2,function(i) sum(grepl("TRUE",i)))==0)
+#subburt=subburt[,-torem]
 
+#acm=dudi.acm(subburt)
+#s.label(acm$c1)
+#s.label(acm$l1)
 
-freq.atc=count.dyspatc/apply(count.dyspatc, 1, sum)
-freq.dysp= t(t(count.dyspatc)/apply(count.dyspatc, 2, sum))
-plot(hclust(dist(freq.atc)))
-plot(hclust(dist(t(freq.dysp))))
-order.atc=hclust(dist(freq.atc))$order
-order.dysp=hclust(dist(t(freq.dysp)))$order
-freq.order.atc=freq.atc[order.atc,order.dysp]
-freq.pv=fisher.dyspatc[order.atc,order.dysp]
-melt.freq.order=melt(freq.order.atc)
-ggplot()+geom_raster(data=melt.freq.order,aes(x=Var2,y=Var1,fill=value))
-
-
-heatmap(freq.dyspatc)
-
-plot.phylo(as.phylo(hclust(dist(atc))),type="fan")
-
-
-
-df.atc.dysp=rbind(atc,dysp) #concatenation des atc et dysp
-
-library(cluster)
-gap=clusGap(df.atc.dysp,kmeans,30,B=500)
-nc=maxSE(gap$Tab[,3],gap$Tab[,4],method = "Tibs2001SEmax") #le nombre de clusters
-print(nc)
-kmeans(df.atc.dysp,nc)
-
-#clustering hierarchique
-hc=hclust(dist(df.atc.dysp))
-library(ape)
-ape.hc=as.phylo(hc)
-plot(hc)
-plot(ape.hc,cex=.8,use.edge.length = T,type="fan")
+burt.acp=apply(burt,2,function(i) as.integer(as.logical(as.character((i)))))
+medacp=dudi.pca(burt.acp)
+s.corcircle(medacp$c1)
+s.label(medacp$l1)
+ggplot()+geom_point(data=medacp$l1,aes(x=RS1,y=RS2))+#xlim(0,.55)+ylim(-1,10)+
+  xlim(0,0.05)+ylim(-1,10)+
+  geom_text_repel(aes(x=medacp$c1$CS1,y=medacp$c1$CS2,label=rownames(medacp$c1),col=factor(nchar(rownames(medacp$c1)))))+labs(col="")
 
 
+#data[which(medacp$l1[,1]>.2&medacp$l1[,1]<1),]
+
+#fisher.test(table(data$ATC=="NONE",data$DYSPLASIES),simulate.p.value = T,B = 100000)
+
+#######################################
+# HEATMAP of standardized frequencies #
+#######################################
+contingence=count.dyspatc[which(rownames(count.dyspatc)=="NONE"|nchar(rownames(count.dyspatc))==5),]
+# N=sum(contingence)
+# meltedcontingence=expand.grid(atc=apply(contingence, 1, sum),dysp=apply(contingence, 2, sum))
+# #M0=matrix(meltedcontingence[,2],nrow=nrow(contingence))
+# M0=matrix(apply(meltedcontingence, 1, prod)/(N),nrow=nrow(contingence))
+# fij=matrix(apply(meltedcontingence, 1, prod)/(N**2),nrow=nrow(contingence))  
+# zij=(contingence-M0)/(1.96*sqrt(fij*(1-fij)*N)) #standardization
+# melt.zij=melt(zij) 
+# ggplot()+geom_raster(data=melt.zij,aes(x=Var1,y=Var2,fill=value))+
+#   scale_fill_gradientn(colours = c("green","white","red","darkred"),values = c(0,0,1))+
+#   labs(fill="Z value")+ylab("dysplasie")+xlab("ATC")+
+#   theme(axis.text.x = element_text(angle = 90, hjust = 1,size=5),axis.text.y = element_text(size=5))
+# heatmap(zij)
+# 
+# hatc=(hclust(dist(zij)))
+# hdysp=hclust(dist(t(zij)))
+# 
+# #ordered with hclust
+# 
+# contingence.order=contingence[hatc$order,hdysp$order]
+# meltedcontingenceorder=expand.grid(atc=apply(contingence.order, 1, sum),dysp=apply(contingence.order, 2, sum))
+# #M0=matrix(meltedcontingence[,2],nrow=nrow(contingence))
+# M0order=matrix(apply(meltedcontingenceorder, 1, prod)/(N),nrow=nrow(contingence))
+# fijorder=matrix(apply(meltedcontingenceorder, 1, prod)/(N**2),nrow=nrow(contingence))  
+# zijorder=(contingence.order-M0order)/(1.96*sqrt(fijorder*(1-fijorder)*N)) #standardization
+# melt.zijorder=melt(zijorder) 
+# ggplot()+geom_raster(data=melt.zijorder,aes(x=Var1,y=Var2,fill=value))+
+#   scale_fill_gradientn(colours = c("green","white","red","darkred"),values = c(0,0,1))+
+#   labs(fill="Z value")+ylab("dysplasie")+xlab("ATC")+
+#   theme(axis.text.x = element_text(angle = 90, hjust = 1,size=5),axis.text.y = element_text(size=5))
+# 
+# ggplot()+geom_raster(data=melt.zijorder,aes(x=Var1,y=Var2,fill=ifelse(value>0,value,NA)))+
+#   scale_fill_gradient2(low="blue",mid="pink",high="darkred",midpoint=1,na.value = "white")+
+#   labs(fill="Z value")+ylab("dysplasie")+xlab("ATC")+
+#   theme(axis.text.x = element_text(angle = 90, hjust = 1,size=5),axis.text.y = element_text(size=5))
+
+standardizeMatrix=function(m,replaceNA=TRUE,phialpha=1.96){
+  N=sum(m)
+  meltedcontingence=expand.grid(atc=apply(m, 1, sum),dysp=apply(m, 2, sum))
+  #M0=matrix(meltedcontingence[,2],nrow=nrow(contingence))
+  M0=matrix(apply(meltedcontingence, 1, prod)/(N),nrow=nrow(m))
+  fij=matrix(apply(meltedcontingence, 1, prod)/(N**2),nrow=nrow(m))  
+  zij=(m-M0)/(phialpha*sqrt(fij*(1-fij)*N)) #standardization
+  if(replaceNA) zij[is.na(zij)]<-0
+  return(zij)
+}
+
+plotHeatmap=function(zij,toOrder=TRUE){
+  nr=nrow(zij)
+  nc=ncol(zij)
+  if(toOrder){
+    hatc=(hclust(dist(zij)))
+    hdysp=hclust(dist(t(zij)))
+    zij=zij[hatc$order,hdysp$order]
+  }
+  melt.zij=melt(zij) 
+  ggplot()+geom_raster(data=melt.zij,aes(x=Var1,y=Var2,fill=value))+
+    scale_fill_gradientn(colours = c("green","white","red","darkred"),values = c(0,0,1))+
+    labs(fill="Z value")+ylab("dysplasie")+xlab("ATC")+
+    theme(axis.text.x = element_text(angle = 90, hjust = 1,size=5),axis.text.y = element_text(size=5))
+  
+}
+
+plotHeatmap(standardizeMatrix(contingence))
+
+###############
+# simulations #
+###############
+
+associationH0=function(fij,N){
+  apply(fij,1,function(i) rbinom(ncol(fij),N,i))  
+}
+
+pairFisher=function(contingence){
+  nc=ncol(contingence)
+  nr=nrow(contingence)
+  mf=sapply(1:nr, function(rr){
+    sapply(1:nc, function(cc){
+      em=contingence[rr,cc]
+      nem=sum(contingence[-rr,cc])
+      enm=sum(contingence[rr,-cc])
+      nenm=sum(contingence[-rr,-cc])
+      if(em==0|em+enm==0|nem+em==0) return(1)
+      else return(fisher.test(matrix(c(em,enm,nem,nenm),nrow=2),alternative = "greater" )$p.value )
+    })
+  })
+  mf=t(mf)
+  colnames(mf)=colnames(contingence)
+  rownames(mf)=rownames(contingence)
+  return((mf))
+}
+
+
+simulateSpecifity=function(fij,Nobs,Nsim=100){
+  return(sapply(1:Nsim, function(ii){
+    m0=associationH0(fij,Nobs)
+    return(melt(pairFisher(m0))[,3])
+  }))
+}
+
+specificity=function(pvalues,alphas=seq(0,1,by=0.01)){
+  x=sapply(alphas,function(a) sum(pvalues<=a))/length(pvalues)
+  names(x)=alphas
+  return(x)
+}
+
+
+z0=standardizeMatrix(associationH0(fij,N))
+plotHeatmap(z0)
+
+dummym=matrix(rpois(6,10),nrow=2)
+pairFisher(dummym)
+fishC=pairFisher(contingence)
+
+dummy0=simulateSpecifity(fij,N,100)
+#plot(sort(dummy0[,1]))
+alphaseuil=seq(0,0.1,by=0.001)
+spe0=apply(dummy0,2,function(ii) specificity(ii,alphaseuil))
+spe1=specificity(as.numeric(fishC),alphaseuil)
+
+ggplot()+geom_line(data=melt(spe0),aes(x=Var1,y=value,group=Var2,col=factor(Var2)),lty=2)+
+  geom_point(aes(x=alphaseuil,y=spe1),col="red")+ylim(0,0.012)+xlim(0,.05)
+# cspe0=apply(spe0,2,cumsum)
+# ggplot()+geom_line(data=melt(cspe0),aes(x=Var1,y=value,group=Var2,col=factor(Var2)),lty=2)+
+#   geom_point(aes(x=alphaseuil,y=cumsum(spe1)),col="red")+ylim(0,0.2)+xlim(0,.05)
