@@ -293,3 +293,86 @@ ggplot()+geom_line(data=melt(spe0),aes(x=Var1,y=value,group=Var2,col=factor(Var2
 # cspe0=apply(spe0,2,cumsum)
 # ggplot()+geom_line(data=melt(cspe0),aes(x=Var1,y=value,group=Var2,col=factor(Var2)),lty=2)+
 #   geom_point(aes(x=alphaseuil,y=cumsum(spe1)),col="red")+ylim(0,0.2)+xlim(0,.05)
+
+
+##############
+# sensitvity #
+##############
+associationH1=function(fij,N,i=NULL,j=NULL,RR=2){
+  rr=rep(1,ncol(fij))
+  rr[j]=RR
+  m=sapply(1:nrow(fij),function(ii){
+    if(ii!=i) rbinom(ncol(fij),N,fij[ii,])
+    else rbinom(ncol(fij),N,fij[ii,]*rr)
+  } )  
+  return(t(m))
+}
+
+simulateSensitivity=function(fij,Nobs,Nsim=100,i=NULL,j=NULL,RR=c(1,2),pdsRandom=TRUE){
+  if(is.null(i)|is.null(j)){
+    if(pdsRandom){
+      wi=apply(fij, 1, sum)
+      wj=apply(fij, 2, sum)
+    }else{
+      wi=rep(1,nrow(fij))
+      wj=rep(2,ncol(fij))
+    }
+    wi=wi/sum(wi)
+    wj=wj/sum(wj)
+  }
+  if(length(RR)==1) RR=rep(RR,2)
+
+  pv=sapply(1:Nsim, function(k){
+    if(is.null(i)) i=sample(1:nrow(fij),1,prob = wi)
+    if(is.null(j)) j=sample(1:ncol(fij),1,prob = wj)
+    mas=associationH1(fij,Nobs,i,j,runif(1,RR[1],RR[2]))
+    em=mas[i,j]
+    nem=sum(mas[-i,j])
+    enm=sum(mas[i,-j])
+    nenm=sum(mas[-i,-j])
+    if(em==0|em+enm==0|nem+em==0) return(1)
+    else return(fisher.test(matrix(c(em,enm,nem,nenm),nrow=2),alternative = "greater" )$p.value )
+  })
+  return(pv)
+}
+
+pvH1nor=simulateSensitivity(fij,N,RR=2,Nsim = 10000,pdsRandom = F)
+speH1nor=specificity(pvH1nor,alphaseuil)
+ggplot()+geom_line(data=melt(spe0),aes(x=Var1,y=value,group=Var2,col=factor(Var2)),lty=2)+
+  geom_point(aes(x=alphaseuil,y=speH1nor),col="red")+#ylim(0,0.012)+xlim(0,.05)+
+  theme(legend.position = "none")
+
+
+
+alphaseuil=seq(0,1,by=0.001)
+spe0=apply(dummy0,2,function(ii) specificity(ii,alphaseuil))
+speH1nor=specificity(pvH1nor,alphaseuil)
+TFP=apply(spe0,1,mean)
+TVP=speH1nor
+plot(TFP,TVP,type="l",xlim=c(0,.15),ylim=c(0,.15))
+abline(a = 0,b=1)
+plot(alphaseuil,TVP-TFP,ylim=c(-.05,.05))
+
+pvH1r=sapply(seq(1,3,by=.1), function(rr) simulateSensitivity(fij,N,RR=rr,Nsim = 5000,pdsRandom = F))
+pvH1s=apply(pvH1r,2, function(ii)  specificity(ii,alphaseuil))
+mpvh1s=melt(pvH1s)
+
+ggplot()+geom_line(data=melt(spe0),aes(x=Var1,y=value,group=Var2,linetype="TFP"))+
+  geom_line(data=mpvh1s,aes(x=Var1,y=value,group=Var2,col=(Var2/20+1),linetype="TVP"))+ylim(0,0.06)+xlim(0,.08)+
+  labs(col="RR",linetype="")+
+  scale_linetype_manual(c("TFP","TVP"),values=c(2,1))+
+  xlab("p-value threshold")+
+  ylab("positive rate")+
+  ggtitle("True and false positive rate")
+  #theme(legend.position = "none")
+
+
+rTP=apply(pvH1s, 2, function(i) i/TFP)
+ggplot()+geom_line(data=melt(rTP),aes(x=Var1,y=value,group=Var2,col=(Var2-1)/10+1))+labs(col="RR")+
+  ylim(0.9,10)+xlim(0,.05)
+
+###########################################
+# influence de la taille de l'echantillon #
+###########################################
+vn=seq(5000,5000,by=10000)
+dummy0N=sapply(vn, function(nn) simulateSpecifity(fij,nn,100)) 
