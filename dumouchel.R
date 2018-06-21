@@ -175,8 +175,38 @@ mmO=melt(mO)
 mmE=melt(mE)
 
 X0=c(.2,.05,.5,.5,.0004)
-opt=optim(X0,LLtheta,o=mmO$value,e=mmE$value)
+opt=optim(X0,LLtheta,o=mmO$value,e=mmE$value) #estimation by likelihood maximum
 X1=opt$par
+
+
+## par expectation maximization
+LLtheta2=function(X,o=O,e=E,pp=.5,minus=-1,vpi){
+  a1=X[1]
+  b1=X[2]
+  a2=X[3]
+  b2=X[4]
+  nn=length(o)
+  if(pp<0 | pp>1 | a1<=0 | a2<=0 | b1<=0 | b2<=0) ll=Inf
+  else ll=sum(vpi*log(dq(o,a1,b1,e)*pp)+(1-vpi)*log(dq(o,a2,b2,e)*(1-pp)))
+  return(minus*ll)
+}
+PP=.1
+XX=X0[1:4]
+nsim=10
+for(i in 1:nsim){
+  print(i)
+  pp1=sapply(1:nrow(mmO), function(ii) log(PP)+log(dq(mmO$value[ii], XX[1],XX[2],mmE$value[ii] )) )
+  pp2=sapply(1:nrow(mmO), function(ii) log(1-PP)+log(dq(mmO$value[ii], XX[3],XX[4],mmE$value[ii] )) )
+  ppi=exp(pp1)/(exp(pp1)+exp(pp2))
+  #ppi=ifelse(pp1>pp2,1,0)
+  #ppi=exp(pp1)
+  PP=mean(ppi)
+  XX=optim(XX,LLtheta2,o=mmO$value,e=mmE$value,pp=PP,vpi=ppi)$par
+  
+}
+
+mm[which(ppi>.5),]
+X1=c(XX,PP)
 
 #E=1 #just an exemple of 'O'bserved and 'E'xpected data
 #O=10
