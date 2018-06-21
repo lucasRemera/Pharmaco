@@ -93,6 +93,17 @@ rpi=function(n,alpha1=1,beta1=1,alpha2=1,beta2=1,P=.5){
   P*rgamma(n,alpha1,beta1)+(1-P)*rgamma(n,alpha2,beta2)
 } #simulate variables following the 'pi' law, dumouchel
 
+dqn=function(x,E,alpha1=1,beta1=1,alpha2=1,beta2=1,P=.5){
+  #A1=0
+  #A2=0
+  #while(A1==0&A2==0){
+  A1=dq(x,alpha1,beta1,E)
+  A2=dq(x,alpha2,beta2,E)
+  #print(paste0(A1,"  ",A2))
+  qq = P*A1/(P*A1+(1-P)*A2)
+  return(qq)
+} #the 'Qn' law (density), dumouchel
+
 rqn=function(n,E,O,alpha1=1,beta1=1,alpha2=1,beta2=1,P=.5){
   #A1=0
   #A2=0
@@ -114,17 +125,66 @@ rqn=function(n,E,O,alpha1=1,beta1=1,alpha2=1,beta2=1,P=.5){
   return(qq)
 } #simulate variables following the 'Qn' law, dumouchel
 
-a1=.2
-b1=.1
-a2=2
-b2=4
-pp=1/3 #the prior distribution from dumouchel 1999
-E=10 #just an exemple of 'O'bserved and 'E'xpected data
-O=100
+# a1=.2
+# b1=.1
+# a2=2
+# b2=4
+# pp=1/3 #the prior distribution from dumouchel 1999
+# E=10 #just an exemple of 'O'bserved and 'E'xpected data
+# O=100
 rlambda=function(n,E,O,alpha1=1,beta1=1,alpha2=1,beta2=1,P=.5){
   vqn=rqn(n,E,O,alpha1,beta1,alpha2,beta2,P)
   #print(vqn)
   return(rpi(n,alpha1+O,beta1+E,alpha2+O,beta2+E,vqn))
 } #simulate lambda, the risk ratio
 
-vlambda=rlambda(1000,E,O,a1,b1,a2,b2,pp)
+# vlambda=rlambda(1000,E,O,a1,b1,a2,b2,pp)
+# quantile(vlambda,probs = c(0.025,0.5,0.975)) #median + 95% credibility interval
+
+################
+# EB statistic #
+################
+
+EB=function(O,E,alpha1,beta1,alpha2,beta2,P){
+  if(length(O)==1){
+    qq=dqn(O,E,alpha1,beta1,alpha2,beta2,P)
+    eb=qq*(digamma(alpha1+O)-log(beta1+E))+(1-qq)*(digamma(alpha2+O)-log(beta2+E))
+    return(eb)
+  }else{
+    return(sapply(1:length(O), function(i) EB(O[i],E[i],alpha1,beta1,alpha2,beta2,P )))
+  }
+  
+}
+
+
+LLtheta=function(X,o=O,e=E,minus=-1){
+  a1=X[1]
+  b1=X[2]
+  a2=X[3]
+  b2=X[4]
+  pp=X[5]
+  nn=length(o)
+  if(pp<0 | pp>1 | a1<=0 | a2<=0 | b1<=0 | b2<=0) ll=Inf
+  else ll=sum(log(pp)+log(1-pp)+log(dq(o,a1,b1,e))+log(dq(o,a2,b2,e)))
+  return(minus*ll)
+}
+
+mO=contingence #tableau de contingence des associations observees
+mE=expectedMatrix(mO)
+mmO=melt(mO)
+mmE=melt(mE)
+
+X0=c(.2,.05,.5,.5,.0004)
+opt=optim(X0,LLtheta,o=mmO$value,e=mmE$value)
+X1=opt$par
+
+#E=1 #just an exemple of 'O'bserved and 'E'xpected data
+#O=10
+#vlambda=rlambda(1000,E,O,X1[1],X1[2],X1[3],X1[4],X1[5])
+#hist(vlambda)
+ebpost=EB(mmO$value,mmE$value,X1[1],X1[2],X1[3],X1[4],X1[5])
+mm=cbind(mmO,mmE$value,ebpost)
+mm[order(mm$ebpost,decreasing = T),] #ranking des associations
+
+vlambda=rlambda(1000,mm[24662,4],mm[24662,3],X1[1],X1[2],X1[3],X1[4],X1[5])
+quantile(vlambda,probs=c(.025,.5,.975)) #test if the association is significant (Monte-Carlo)
