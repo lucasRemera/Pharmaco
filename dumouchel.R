@@ -2,6 +2,17 @@
 # medicaments #
 ###############
 
+######################
+# expected frequency #
+######################
+library(reshape2)
+expectedMatrix=function(m){ #where m is the contingence matrix
+  N=sum(m)
+  meltedcontingence=expand.grid(atc=apply(m, 1, sum),dysp=apply(m, 2, sum))
+  #M0=matrix(meltedcontingence[,2],nrow=nrow(contingence))
+  M0=matrix(apply(meltedcontingence, 1, prod)/(N),nrow=nrow(m))
+  return(M0)
+}
 ####################
 ## Gibbs sampling ##
 ####################
@@ -50,12 +61,12 @@ dq=function(x,alpha=1,beta=1,E=1){
   A1=(1+(beta/E))**(-x)*(1+E/beta)**(-alpha)
   A2=lgamma(alpha+x)-lgamma(alpha)-lfactorial(x)
   return(A1*exp(A2))
-}
+} #the density of probabilty of f=Pr(N=n), dumouchel 1999
 
 pq=function(q,alpha=1,beta=1,E=1){
   if(length(q)==1) return(sum(sapply(0:q, function(i) dq(i,alpha,beta,E))))
   else return(sapply(q,function(qq) pq(qq,alpha,beta,E)))
-}
+} #the repartition function of f=Pr(N=n), dumouchel 1999
 
 rq=function(n,alpha=1,beta=1,E=1){
   if(n==1){
@@ -75,12 +86,12 @@ rq=function(n,alpha=1,beta=1,E=1){
     return(nn)
   }
   else return(replicate(n,{rq(1,alpha,beta,E)}))
-}
+} #simulate variables following the 'dq' law
 
 
 rpi=function(n,alpha1=1,beta1=1,alpha2=1,beta2=1,P=.5){
   P*rgamma(n,alpha1,beta1)+(1-P)*rgamma(n,alpha2,beta2)
-}
+} #simulate variables following the 'pi' law, dumouchel
 
 rqn=function(n,E,O,alpha1=1,beta1=1,alpha2=1,beta2=1,P=.5){
   #A1=0
@@ -101,19 +112,19 @@ rqn=function(n,E,O,alpha1=1,beta1=1,alpha2=1,beta2=1,P=.5){
   }
   qq = P*A1/(P*A1+(1-P)*A2)
   return(qq)
-}
+} #simulate variables following the 'Qn' law, dumouchel
 
 a1=.2
 b1=.1
 a2=2
 b2=4
-pp=1/3
-E=10
+pp=1/3 #the prior distribution from dumouchel 1999
+E=10 #just an exemple of 'O'bserved and 'E'xpected data
 O=100
 rlambda=function(n,E,O,alpha1=1,beta1=1,alpha2=1,beta2=1,P=.5){
   vqn=rqn(n,E,O,alpha1,beta1,alpha2,beta2,P)
   #print(vqn)
   return(rpi(n,alpha1+O,beta1+E,alpha2+O,beta2+E,vqn))
-}
+} #simulate lambda, the risk ratio
 
 vlambda=rlambda(1000,E,O,a1,b1,a2,b2,pp)
