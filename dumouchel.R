@@ -13,6 +13,19 @@ expectedMatrix=function(m){ #where m is the contingence matrix
   M0=matrix(apply(meltedcontingence, 1, prod)/(N),nrow=nrow(m))
   return(M0)
 }
+
+###########
+# Poisson #
+###########
+poissonTest=function(o,e,rr=FALSE){
+  if(length(o)==1){
+    if(rr) return(c(o/e,1-ppois(o,e)))
+    else return(1-ppois(o,e))
+  } 
+  else return(sapply(1:length(o), function(ii) poissonTest(o[ii],e[ii],rr)))
+}
+
+
 ####################
 ## Gibbs sampling ##
 ####################
@@ -145,14 +158,19 @@ rlambda=function(n,E,O,alpha1=1,beta1=1,alpha2=1,beta2=1,P=.5){
 # EB statistic #
 ################
 
-EB=function(O,E,alpha1,beta1,alpha2,beta2,P){
+EB=function(O,E,alpha1,beta1,alpha2,beta2,P,quick.and.dirty=FALSE, toLog=!quick.and.dirty){
   if(length(O)==1){
     qq=dqn(O,E,alpha1,beta1,alpha2,beta2,P)
-    eb=qq*(digamma(alpha1+O)-log(beta1+E))+(1-qq)*(digamma(alpha2+O)-log(beta2+E))
-    return(eb)
+    eb=qq*(digamma(alpha1+O)-log(beta1+E))+(1-qq)*(digamma(alpha2+O)-log(beta2+E))/log(2)
+    if(quick.and.dirty){
+      if(toLog) return(log(2**eb*(exp(c(-2,0,2)/sqrt(1+O))))/log(2))
+      else return(2**eb*(exp(c(-2,0,2)/sqrt(1+O))))
+    } 
+    else if(!toLog) return(2**eb)
+    else return(eb)
   }else{
-    return(sapply(1:length(O), function(i) EB(O[i],E[i],alpha1,beta1,alpha2,beta2,P )))
-  }
+    return(sapply(1:length(O), function(i) EB(O[i],E[i],alpha1,beta1,alpha2,beta2,P,quick.and.dirty,toLog )) )
+  } 
   
 }
 
@@ -178,8 +196,16 @@ X0=c(.2,.05,.5,.5,.0004)
 opt=optim(X0,LLtheta,o=mmO$value,e=mmE$value) #estimation by likelihood maximum
 X1=opt$par
 
+ebpost=EB(mmO$value,mmE$value,X1[1],X1[2],X1[3],X1[4],X1[5])
+mm=cbind(mmO,mmE$value,ebpost)
+mm[order(mm$ebpost,decreasing = T),] #ranking des associations
 
-## par expectation maximization
+vlambda=rlambda(1000,mm[24662,4],mm[24662,3],X1[1],X1[2],X1[3],X1[4],X1[5])
+quantile(vlambda,probs=c(.025,.5,.975)) #test if the association is significant (Monte-Carlo)
+
+###############################
+##  expectation maximization ##
+###############################
 LLtheta2=function(X,o=O,e=E,pp=.5,minus=-1,vpi){
   a1=X[1]
   b1=X[2]
@@ -218,3 +244,43 @@ mm[order(mm$ebpost,decreasing = T),] #ranking des associations
 
 vlambda=rlambda(1000,mm[24662,4],mm[24662,3],X1[1],X1[2],X1[3],X1[4],X1[5])
 quantile(vlambda,probs=c(.025,.5,.975)) #test if the association is significant (Monte-Carlo)
+
+
+#################################################
+## Parameters estimation with a gibbs sampling ##
+#################################################
+# here observed are name obs and expected expe
+N=length(obs)
+modelMAll<-"
+model{
+for(i in 1:N){
+A1[i]~dgamma(alpha1,beta1)
+A2[i]~dgamma(alpha2,beta2)
+lambda[i]<-P*A1[i]+(1-P)*A2[i]
+tau[i]<-lambda[i]*E[i]
+O[i]~dpois(tau[i])
+}
+alpha1~dexp(.1)
+beta1~dexp(0.1)
+alpha2~dexp(.1)
+beta2~dexp(.1)
+P~dbeta(5,95)
+}
+"
+library(rjags)
+require(coda)
+modelMall.spec<-textConnection(modelMAll)
+jags <- jags.model(modelMall.spec,
+                   data = list('O' = obs,
+                               'E' = expe,
+                               'N'=N),
+                   inits = list(alpha1=.2,beta1=.1,alpha2=2,beta2=4,P=0.5),
+                   n.chains=3, 
+                   n.adapt=100)
+update(jags,1000)
+samps.coda <- coda.samples(jags,
+                           c('lambda','P'),
+                           n.iter=10000
+)
+plot((samps.coda[[1]][,c("lambda")]))
+quantile((samps.coda[[1]][,c("lambda")]),probs = c(.025,.5,.975))
