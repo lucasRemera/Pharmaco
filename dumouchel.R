@@ -30,40 +30,40 @@ poissonTest=function(o,e,rr=FALSE){
 ## Gibbs sampling ##
 ####################
 
-O=10 #observed cases
-E=1 #expected cases
-
-modelM<-"
-model{
-A1~dgamma(alpha1,beta1)
-A2~dgamma(alpha2,beta2)
-lambda<-P*A1+(1-P)*A2
-tau<-lambda*E
-O~dpois(tau)
-
-alpha1~dexp(.1)
-beta1~dexp(0.1)
-alpha2~dexp(.1)
-beta2~dexp(.1)
-P~dbeta(5,95)
-}
-"
-library(rjags)
-require(coda)
-modelM.spec<-textConnection(modelM)
-jags <- jags.model(modelM.spec,
-                   data = list('O' = O,
-                               'E' = E),
-                   inits = list(alpha1=.2,beta1=.1,alpha2=2,beta2=4,P=0.5),
-                   n.chains=4, 
-                   n.adapt=100)
-update(jags,1000)
-samps.coda <- coda.samples(jags,
-                           c('lambda','P'),
-                           n.iter=100000
-)
-plot((samps.coda[[1]][,c("P")]))
-quantile((samps.coda[[1]][,c("lambda")]),probs = c(.025,.5,.975))
+# O=10 #observed cases
+# E=1 #expected cases
+# 
+# modelM<-"
+# model{
+# A1~dgamma(alpha1,beta1)
+# A2~dgamma(alpha2,beta2)
+# lambda<-P*A1+(1-P)*A2
+# tau<-lambda*E
+# O~dpois(tau)
+# 
+# alpha1~dexp(.1)
+# beta1~dexp(0.1)
+# alpha2~dexp(.1)
+# beta2~dexp(.1)
+# P~dbeta(5,95)
+# }
+# "
+# library(rjags)
+# require(coda)
+# modelM.spec<-textConnection(modelM)
+# jags <- jags.model(modelM.spec,
+#                    data = list('O' = O,
+#                                'E' = E),
+#                    inits = list(alpha1=.2,beta1=.1,alpha2=2,beta2=4,P=0.5),
+#                    n.chains=4, 
+#                    n.adapt=100)
+# update(jags,1000)
+# samps.coda <- coda.samples(jags,
+#                            c('lambda','P'),
+#                            n.iter=100000
+# )
+# plot((samps.coda[[1]][,c("P")]))
+# quantile((samps.coda[[1]][,c("lambda")]),probs = c(.025,.5,.975))
 
 ###################################
 ## exact posterior distribution  ##
@@ -106,7 +106,7 @@ rpi=function(n,alpha1=1,beta1=1,alpha2=1,beta2=1,P=.5){
   P*rgamma(n,alpha1,beta1)+(1-P)*rgamma(n,alpha2,beta2)
 } #simulate variables following the 'pi' law, dumouchel
 
-dqn=function(x,E,alpha1=1,beta1=1,alpha2=1,beta2=1,P=.5){
+qn=function(x,E,alpha1=1,beta1=1,alpha2=1,beta2=1,P=.5){
   #A1=0
   #A2=0
   #while(A1==0&A2==0){
@@ -115,7 +115,18 @@ dqn=function(x,E,alpha1=1,beta1=1,alpha2=1,beta2=1,P=.5){
   #print(paste0(A1,"  ",A2))
   qq = P*A1/(P*A1+(1-P)*A2)
   return(qq)
-} #the 'Qn' law (density), dumouchel
+} #the 'Qn' law (density), dumouchel ##wrong !!!
+
+
+dqn=function(x,E,alpha1=1,beta1=1,alpha2=1,beta2=1,P=.5){
+  if(length(x)==1){
+    if(x==0) return(dq(0,alpha1,beta1,E))
+    toIntegrate=function(t) dq(t,alpha1,beta1,E)*dq(P*t*(1/x-1)/(1-P))
+    return(integrate(toIntegrate,0,Inf)[[1]])
+  }
+  else return(sapply(x, function(xx) dqn(xx,E,alpha1,beta1,alpha2,beta2,P )))
+}
+
 
 rqn=function(n,E,O,alpha1=1,beta1=1,alpha2=1,beta2=1,P=.5){
   #A1=0
@@ -151,6 +162,11 @@ rlambda=function(n,E,O,alpha1=1,beta1=1,alpha2=1,beta2=1,P=.5){
   return(rpi(n,alpha1+O,beta1+E,alpha2+O,beta2+E,vqn))
 } #simulate lambda, the risk ratio
 
+rlambda2=function(n,E,O,alpha1=1,beta1=1,alpha2=1,beta2=1,P=.5){
+  qq=qn(O,E,alpha1,beta1,alpha2,beta2,P)
+  #print(vqn)
+  return(rpi(n,alpha1+O,beta1+E,alpha2+O,beta2+E,qq))
+}
 # vlambda=rlambda(1000,E,O,a1,b1,a2,b2,pp)
 # quantile(vlambda,probs = c(0.025,0.5,0.975)) #median + 95% credibility interval
 
@@ -192,46 +208,28 @@ mE=expectedMatrix(mO)
 mmO=melt(mO)
 mmE=melt(mE)
 
+idx=which(mmO$value!=0)
+# mmO=mmO[idx,]
+# mmE=mmE[idx,]
+#filtre sur les observes >0?
 X0=c(.2,.05,.5,.5,.0004)
-opt=optim(X0,LLtheta,o=mmO$value,e=mmE$value) #estimation by likelihood maximum
+opt=optim(X0,LLtheta,o=mmO$value,e=mmE$value,control = list(maxit=1000)) #estimation by likelihood maximum
 X1=opt$par
 
 ebpost=EB(mmO$value,mmE$value,X1[1],X1[2],X1[3],X1[4],X1[5])
 mm=cbind(mmO,mmE$value,ebpost)
+mm$idx=1:nrow(mm)
 mm[order(mm$ebpost,decreasing = T),] #ranking des associations
 
-vlambda=rlambda(1000,mm[24662,4],mm[24662,3],X1[1],X1[2],X1[3],X1[4],X1[5])
+vlambda=rlambda2(10000,mm[145,4],mm[145,3],X1[1],X1[2],X1[3],X1[4],X1[5])
 quantile(vlambda,probs=c(.025,.5,.975)) #test if the association is significant (Monte-Carlo)
 
 ###############################
 ##  expectation maximization ##
 ###############################
-LLtheta2=function(X,o=O,e=E,pp=.5,minus=-1,vpi){
-  a1=X[1]
-  b1=X[2]
-  a2=X[3]
-  b2=X[4]
-  nn=length(o)
-  if(pp<0 | pp>1 | a1<=0 | a2<=0 | b1<=0 | b2<=0) ll=Inf
-  else ll=sum(vpi*log(dq(o,a1,b1,e)*pp)+(1-vpi)*log(dq(o,a2,b2,e)*(1-pp)))
-  return(minus*ll)
-}
-PP=.1
-XX=X0[1:4]
-nsim=10
-for(i in 1:nsim){
-  print(i)
-  pp1=sapply(1:nrow(mmO), function(ii) log(PP)+log(dq(mmO$value[ii], XX[1],XX[2],mmE$value[ii] )) )
-  pp2=sapply(1:nrow(mmO), function(ii) log(1-PP)+log(dq(mmO$value[ii], XX[3],XX[4],mmE$value[ii] )) )
-  ppi=exp(pp1)/(exp(pp1)+exp(pp2))
-  #ppi=ifelse(pp1>pp2,1,0)
-  #ppi=exp(pp1)
-  PP=mean(ppi)
-  XX=optim(XX,LLtheta2,o=mmO$value,e=mmE$value,pp=PP,vpi=ppi)$par
-  
-}
-
+ 
 mm[which(ppi>.5),]
+head(mm[order(ppi,decreasing = T),], sum(ppi>.5))
 X1=c(XX,PP)
 
 #E=1 #just an exemple of 'O'bserved and 'E'xpected data
@@ -284,3 +282,163 @@ samps.coda <- coda.samples(jags,
 )
 plot((samps.coda[[1]][,c("lambda")]))
 quantile((samps.coda[[1]][,c("lambda")]),probs = c(.025,.5,.975))
+
+###############
+# simulations #
+###############
+#k to modulate numbers of total observation (N'=k*N)
+#n the number of simulation
+simulatePoissonH0=function(expected,k=1,n=1){
+  if(n==1) return(rpois(length(expected),k*expected))
+  else replicate(n,{simulatePoissonH0(expected,k,1)})
+}
+
+simulatePoissonH1=function(expected,idx,rr=2,k=1,n=1){
+  
+  if(n==1){
+    RR=rep(1,length(expected))
+    RR[idx]=rr
+    return(rpois(length(expected),k*expected*RR))
+  } 
+  else replicate(n,{simulatePoissonH1(expected,idx,rr,k,1)})
+}
+
+eH0=simulatePoissonH0(mmE$value,1,10)
+ebH0=apply(eH0, 2, function(ee){
+  X00=c(.2,.1,2,4,.1)
+  opt0=optim(X00,LLtheta,o=ee,e=mmE$value) #estimation by likelihood maximum
+  X10=opt0$par 
+  
+  return(EB(ee,mmE$value,X10[1],X10[2],X10[3],X10[4],X10[5]))
+})
+
+
+seqQ=seq(0,1,by=0.01)
+# plot(quantile(ebpost,probs=seqQ),quantile(ebH0[,1],probs=seqQ),col=rainbow(length(seqQ)))
+# abline(a = 0,b=1,col="blue")
+ggplot()+geom_point(aes(x=quantile(ebpost,probs=seqQ),y=quantile(ebH0[,1],probs=seqQ),col=seqQ))+geom_abline(aes(slope=1,intercept=0))+coord_fixed()
+
+mebH0=melt(ebH0)     
+ggplot()+geom_histogram(data=mebH0,aes(x=value,group=Var2,fill=factor(Var2)),alpha=.5,bins=100)+geom_histogram(aes(x=ebpost),col="red",alpha=.5,bins=100)
+
+txT=sapply(seq(-2,2,by=0.001), function(s) sum(ebpost<s) )/length(ebpost)
+tx0=sapply(seq(-2,2,by=0.001), function(s) sum(ebH0[,1]<s) )/length(ebH0[,1])
+ggplot()+geom_line(aes(x=txT,y=tx0),col=3+seq(-2,2,by=0.001))+geom_abline(aes(slope=1,intercept=0))
+
+
+X100=apply(eH0, 2, function(ee){
+  X00=c(.2,.1,2,4,.1)
+  opt0=optim(X00,LLtheta,o=ee,e=mmE$value) #estimation by likelihood maximum
+  X10=opt0$par
+  return(X10)
+})
+
+##############################################
+# lasso regression for confounding controls ##
+##############################################
+library(glmnet)
+load("burtSIDPNG.RData",verbose = T)
+
+burtATC=burtSIDPNG[,4:100]
+burtDYSP=burtSIDPNG[,101:242]
+burtDYSP=as.data.frame(apply(burtDYSP,2,as.numeric))
+burtATC=(apply(burtATC,2,as.numeric))
+
+lasso=glmnet(burtATC,as.factor(burtDYSP[,"Q60"]),family = "binomial",alpha=1,lambda = 10**seq(-10,6,by=.1))
+plot(lasso,xvar="lambda")
+lasso_cv=cv.glmnet(burtATC,burtDYSP[,"Q54"],alpha=1,lambda = 10**seq(-6,6,by=.1))
+plot(lasso_cv)
+lasso_cv$lambda[80]
+lasso_cv$glmnet.fit$beta[,82]
+
+
+##################################
+## Bayesian logistic regression ##
+##################################
+
+load("burtSIDPNG.RData",verbose = T)
+burtATC=burtSIDPNG[,4:100]
+burtDYSP=burtSIDPNG[,101:242]
+burtDYSP=apply(burtDYSP,2,as.numeric)
+burtATC=apply(burtATC,2,as.numeric)
+
+
+modellog<-"
+model{
+for(i in 1:Nobs){
+dysp[i] ~ dbern(p[i])
+p[i] <- 1 / (1 + exp(-z[i]))
+z[i]<-sum(m[i,])
+for(j in 1:Natc){
+m[i,j]<-beta[j]*atc[i,j]
+
+}
+}
+for(k in 1:Natc){
+beta[k]~dnorm(0,tau[k])
+tau[k]~dexp(gamma)
+}
+gamma~dexp(1)
+}
+"
+
+Nobs=nrow(burtATC)
+Natc=ncol(burtATC)
+dysp=burtDYSP[,43]
+modellog.spec<-textConnection(modellog)
+jags <- jags.model(modellog.spec,
+                   data = list('Nobs' = Nobs,
+                               'Natc' = Natc,
+                               'dysp'=dysp,
+                               'atc'=burtATC),
+                   inits = list(gamma=1),
+                   n.chains=3, 
+                   n.adapt=100)
+update(jags,1000)
+samps.codalog <- coda.samples(jags,
+                              c('beta','gamma','tau'),
+                              n.iter=10000
+)
+
+save(samps.codalog,file="GibbsLogit180712.RData")
+
+#########################
+# information component #
+#########################
+
+MutualInformation=function(o,e){
+  N=sum(o)
+  sum(log2(o/e)*o/N)
+}
+
+InformationComponent=function(o,e,ATC,MALF,atc,malf){
+  i=which(ATC==atc&MALF==malf)
+  log2(o[i]/e[i])
+}
+
+#MutualInformation(mmO$value,mmE$value)
+
+#########
+# BCPNN #
+#########
+#keeping the Bate,1998 notation
+BCPNN=function(cxy,cx,cy,C,aalpha1=1,aalpha=2,bbeta1=1,bbeta=2,ggamma11=1,ggamma=(C[1]+aalpha)*(C[1]+bbeta)/((cx[1]+aalpha1)*(cy[1]+bbeta1))){
+  ccxy=cumsum(cxy)
+  ccx=cumsum(cx)
+  ccy=cumsum(cy)
+  cC=cumsum(C)
+  EIC=log2(((ccxy+ggamma11)*(cC+aalpha)*(cC+bbeta))/((cC+ggamma)*(ccx+aalpha1)*(ccy+bbeta1)))
+  VIC=((cC-ccxy+ggamma-ggamma11)/((ccxy+ggamma11)*(1+cC+ggamma)) + (cC-ccx+aalpha-aalpha1)/((ccx+aalpha1)*(1+cC+aalpha)) + (cC-ccy+bbeta-bbeta1)/((ccy+bbeta1)*(1+cC+bbeta)))/(log(2)**2)
+  return(cbind(expectation=EIC,variance=VIC))
+}
+
+#examples prednisone+renal agenesia
+# vC=c(5018,16000)
+# vxy=c(2,3)
+# vx=c(8,15)
+# vy=c(101,497)
+# 
+# bcpnn=BCPNN(vxy,vx,vy,vC)
+# ggplot()+geom_point(aes(x=c("SIDPNG","SIDPNG+1"),y=as.data.frame(bcpnn)$expectation))+
+#   geom_errorbar(aes(x=c("SIDPNG","SIDPNG+1"),ymin=as.data.frame(bcpnn)$expectation-1.96*as.data.frame(bcpnn)$variance,ymax=as.data.frame(bcpnn)$expectation+1.96*as.data.frame(bcpnn)$variance))+geom_hline(aes(yintercept=0),col="red",lty=2)+
+#   labs(y="IC",x="database",title="IC with BCPNN for prednisone/renal agenesia")
