@@ -1,6 +1,52 @@
+#NOTE INTRODUCTIVE :
+#le gibbs sampler (library(rjags)) ne peut etre charge sur ce rstudio server. Il faut le charger en local !
+#le reste peut effectue sur le serveur
+#dans un premier temps, construction de la matrice de contingence des observes et calcul de la matrice des attendus (chapitres "contingence matrix construction" et "expected frequency")
+#premier test frequentiste avec "poisson"
+#puis les tests bayesiens
+
 ###############
 # medicaments #
 ###############
+
+###################################
+# contingence matrix construction #
+###################################
+setwd("~/Pharmaco") #ou on travaille -> a modifier selon le dossier de travail "working directory"
+data=read.csv2("DYSP_ATC.csv")
+
+# head(data)
+# DYSPLASIES                                                             ATC
+# 1       K07.0|K07.0|K07.1|K07.1|Q37.8|Q37.8|Q87.08|Q87.08 N02AE01|N05BA12|N02AE01|N05BA12|N02AE01|N05BA12|N02AE01|N05BA12
+# 2 P29.2|Q05.9|Q06.1|Q21.0|Q21.1|Q21.11|Q23.10|Q23.4|Q25.4                                                        ||||||||
+# 3                                             Q05.7|Q06.1                                                               |
+# 4                                 P29.2|P94.2|Q21.1|Q90.0                                                             |||
+
+#une entree pour chaque cas, une colonne avec tous les codes de dysplasies associees a ce cas et une autre avec tous les codes ATC associes a ce cas
+
+#vecteur des 3 premiers caracteres du code dysplasie
+DYSPLASIE=unique(unlist(strsplit(as.character(data$DYSPLASIES),split = "[|]")))
+DYSPLASIE3=unique(substr(DYSPLASIE,1,3))
+#DYSPLASIE3=DYSPLASIE3[-which(DYSPLASIE3=="")] #comment if no empty code like ""
+
+#vecteur des 5 premiers caracteres du code ATC
+ATC=unique(unlist(strsplit(as.character(data$ATC),split = "[|]")))
+ATC=ATC[-which(ATC=="")] #comment if no empty code like ""
+ATC5=unique(substr(ATC,1,5))
+
+#conversion
+data=data.frame(apply(data, 2, as.character),stringsAsFactors = FALSE)
+
+#creation du code "NONE" quand il n'y a pas d'ATC
+data$ATC[which(apply(sapply(LETTERS,function(lett) grepl(lett,data$ATC)),1,sum)==0)]="NONE"
+
+# table(grepl(DYSPLASIE3[1],data$DYSPLASIES),grepl(ATC5[1],data$ATC))
+# 
+# table(grepl("Q86",data$DYSPLASIES),grepl("C09CA",data$ATC))
+
+count.dyspatc=sapply(DYSPLASIE3, function(dysp){ #le tableau de contingence
+  sapply(c("NONE",ATC5), function(atc) sum(grepl(dysp,data$DYSPLASIES)&grepl(atc,data$ATC)) )
+})
 
 ######################
 # expected frequency #
@@ -14,9 +60,14 @@ expectedMatrix=function(m){ #where m is the contingence matrix
   return(M0)
 }
 
+me=expectedMatrix(count.dyspatc)
+E=melt(me)$value
+O=melt(count.dyspatc)$value
 ###########
 # Poisson #
 ###########
+#o vector of observed
+#e vector of expected
 poissonTest=function(o,e,rr=FALSE){
   if(length(o)==1){
     if(rr) return(c(o/e,1-ppois(o,e)))
@@ -24,7 +75,7 @@ poissonTest=function(o,e,rr=FALSE){
   } 
   else return(sapply(1:length(o), function(ii) poissonTest(o[ii],e[ii],rr)))
 }
-
+#ne pas hesiter a utiliser 
 
 ####################
 ## Gibbs sampling ##
@@ -154,8 +205,8 @@ rqn=function(n,E,O,alpha1=1,beta1=1,alpha2=1,beta2=1,P=.5){
 # a2=2
 # b2=4
 # pp=1/3 #the prior distribution from dumouchel 1999
-# E=10 #just an exemple of 'O'bserved and 'E'xpected data
-# O=100
+## E=10 #just an exemple of 'O'bserved and 'E'xpected data
+## O=100
 rlambda=function(n,E,O,alpha1=1,beta1=1,alpha2=1,beta2=1,P=.5){
   vqn=rqn(n,E,O,alpha1,beta1,alpha2,beta2,P)
   #print(vqn)
@@ -203,7 +254,7 @@ LLtheta=function(X,o=O,e=E,minus=-1){
   return(minus*ll)
 }
 
-mO=contingence #tableau de contingence des associations observees
+mO=contingence #tableau de contingence des associations observees, like count.dyspatc
 mE=expectedMatrix(mO)
 mmO=melt(mO)
 mmE=melt(mE)
@@ -355,52 +406,52 @@ lasso_cv$glmnet.fit$beta[,82]
 ##################################
 ## Bayesian logistic regression ##
 ##################################
-
-load("burtSIDPNG.RData",verbose = T)
-burtATC=burtSIDPNG[,4:100]
-burtDYSP=burtSIDPNG[,101:242]
-burtDYSP=apply(burtDYSP,2,as.numeric)
-burtATC=apply(burtATC,2,as.numeric)
-
-
-modellog<-"
-model{
-for(i in 1:Nobs){
-dysp[i] ~ dbern(p[i])
-p[i] <- 1 / (1 + exp(-z[i]))
-z[i]<-sum(m[i,])
-for(j in 1:Natc){
-m[i,j]<-beta[j]*atc[i,j]
-
-}
-}
-for(k in 1:Natc){
-beta[k]~dnorm(0,tau[k])
-tau[k]~dexp(gamma)
-}
-gamma~dexp(1)
-}
-"
-
-Nobs=nrow(burtATC)
-Natc=ncol(burtATC)
-dysp=burtDYSP[,43]
-modellog.spec<-textConnection(modellog)
-jags <- jags.model(modellog.spec,
-                   data = list('Nobs' = Nobs,
-                               'Natc' = Natc,
-                               'dysp'=dysp,
-                               'atc'=burtATC),
-                   inits = list(gamma=1),
-                   n.chains=3, 
-                   n.adapt=100)
-update(jags,1000)
-samps.codalog <- coda.samples(jags,
-                              c('beta','gamma','tau'),
-                              n.iter=10000
-)
-
-save(samps.codalog,file="GibbsLogit180712.RData")
+# warning ! too long
+# load("burtSIDPNG.RData",verbose = T)
+# burtATC=burtSIDPNG[,4:100]
+# burtDYSP=burtSIDPNG[,101:242]
+# burtDYSP=apply(burtDYSP,2,as.numeric)
+# burtATC=apply(burtATC,2,as.numeric)
+# 
+# 
+# modellog<-"
+# model{
+# for(i in 1:Nobs){
+# dysp[i] ~ dbern(p[i])
+# p[i] <- 1 / (1 + exp(-z[i]))
+# z[i]<-sum(m[i,])
+# for(j in 1:Natc){
+# m[i,j]<-beta[j]*atc[i,j]
+# 
+# }
+# }
+# for(k in 1:Natc){
+# beta[k]~dnorm(0,tau[k])
+# tau[k]~dexp(gamma)
+# }
+# gamma~dexp(1)
+# }
+# "
+# 
+# Nobs=nrow(burtATC)
+# Natc=ncol(burtATC)
+# dysp=burtDYSP[,43]
+# modellog.spec<-textConnection(modellog)
+# jags <- jags.model(modellog.spec,
+#                    data = list('Nobs' = Nobs,
+#                                'Natc' = Natc,
+#                                'dysp'=dysp,
+#                                'atc'=burtATC),
+#                    inits = list(gamma=1),
+#                    n.chains=3, 
+#                    n.adapt=100)
+# update(jags,1000)
+# samps.codalog <- coda.samples(jags,
+#                               c('beta','gamma','tau'),
+#                               n.iter=10000
+# )
+# 
+# save(samps.codalog,file="GibbsLogit180712.RData")
 
 #########################
 # information component #
@@ -423,6 +474,16 @@ InformationComponent=function(o,e,ATC,MALF,atc,malf){
 #########
 #keeping the Bate,1998 notation
 BCPNN=function(cxy,cx,cy,C,aalpha1=1,aalpha=2,bbeta1=1,bbeta=2,ggamma11=1,ggamma=(C[1]+aalpha)*(C[1]+bbeta)/((cx[1]+aalpha1)*(cy[1]+bbeta1))){
+  ccxy=cumsum(cxy)
+  ccx=cumsum(cx)
+  ccy=cumsum(cy)
+  cC=cumsum(C)
+  EIC=log2(((ccxy+ggamma11)*(cC+aalpha)*(cC+bbeta))/((cC+ggamma)*(ccx+aalpha1)*(ccy+bbeta1)))
+  VIC=((cC-ccxy+ggamma-ggamma11)/((ccxy+ggamma11)*(1+cC+ggamma)) + (cC-ccx+aalpha-aalpha1)/((ccx+aalpha1)*(1+cC+aalpha)) + (cC-ccy+bbeta-bbeta1)/((ccy+bbeta1)*(1+cC+bbeta)))/(log(2)**2)
+  return(cbind(expectation=EIC,variance=VIC))
+}
+
+BCPNN=function(cxy,cx,cy,C,aalpha1=1,aalpha=2,bbeta1=1,bbeta=2,ggamma11=1,ggamma=(C+aalpha)*(C+bbeta)/((cx+aalpha1)*(cy+bbeta1))){
   ccxy=cumsum(cxy)
   ccx=cumsum(cx)
   ccy=cumsum(cy)
